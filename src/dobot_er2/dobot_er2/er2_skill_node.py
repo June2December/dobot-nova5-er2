@@ -41,6 +41,10 @@ class Er2SkillNode(Node):
     def __init__(self):
         super().__init__('er2_skill_node')
         self.declare_parameter('execute_robot', False)
+        # manual: 팔만 이동, 그리퍼는 사람이 버튼. continue 서비스로 다음 단계.
+        # tool_do: J6 ToolDOExecute (아직 안 되면 manual 쓰세요).
+        self.declare_parameter('gripper_mode', 'manual')
+        self.declare_parameter('continue_timeout_s', 180.0)
         self.declare_parameter('speed_ratio', 10)
         self.declare_parameter('approach_z_m', 0.08)
         self.declare_parameter('grip_z_m', 0.03)
@@ -51,19 +55,45 @@ class Er2SkillNode(Node):
         self._pick = None
         self._place = None
         self._busy = False
+        self._continue = threading.Event()
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.create_subscription(PoseStamped, '/er2/pick_pose', self._on_pick, 10)
         self.create_subscription(PoseStamped, '/er2/place_pose', self._on_place, 10)
         self.pub_status = self.create_publisher(String, '/er2/skill_status', 10)
         self.create_service(Trigger, '/er2/execute', self._on_execute)
+        self.create_service(Trigger, '/er2/continue', self._on_continue)
         self.cli_speed = self.create_client(SpeedFactor, '/dobot_bringup_v3/srv/SpeedFactor')
         self.cli_move = self.create_client(MovL, '/dobot_bringup_v3/srv/MovL')
         self.cli_sync = self.create_client(Sync, '/dobot_bringup_v3/srv/Sync')
         self.cli_pose = self.create_client(GetPose, '/dobot_bringup_v3/srv/GetPose')
         self.cli_tool = self.create_client(ToolDOExecute, '/dobot_bringup_v3/srv/ToolDOExecute')
         self.get_logger().info(
-            'er2_skill ready execute_robot={}'.format(self.get_parameter('execute_robot').value))
+            'er2_skill ready execute_robot={} gripper_mode={}'.format(
+                self.get_parameter('execute_robot').value,
+                self.get_parameter('gripper_mode').value))
+
+    def _on_continue(self, request, response):
+        self._continue.set()
+        response.success = True
+        response.message = 'continue'
+        return response
+
+    def _wait_gripper(self, action):
+        """action is 'close' or 'open'."""
+        mode = str(self.get_parameter('gripper_mode').value).strip().lower()
+        if mode == 'tool_do':
+            status = int(self.get_parameter('gripper_close' if action == 'close' else 'gripper_open').value)
+            self._tool(status)
+            return
+        hint = '그리퍼를 {} 한 뒤: ros2 service call /er2/continue std_srvs/srv/Trigger'.format(
+            '닫고' if action == 'close' else '열고')
+        self.get_logger().warn(hint)
+        self.pub_status.publish(String(data=hint))
+        self._continue.clear()
+        timeout = float(self.get_parameter('continue_timeout_s').value)
+        if not self._continue.wait(timeout):
+            raise RuntimeError('그리퍼 대기 시간 초과. /er2/continue 를 호출하세요.')
 
     def _on_pick(self, msg):
         self._pick = msg
@@ -173,16 +203,16 @@ class Er2SkillNode(Node):
         place_grip = np.array(place_mm)
         place_grip[2] += grip
         self._movl(pick_app, rpy, 'pick_approach')
-        self._tool(int(self.get_parameter('gripper_open').value))
         self._movl(pick_grip, rpy, 'pick')
-        self._tool(int(self.get_parameter('gripper_close').value))
+        self._wait_gripper('close')
         self._movl(pick_app, rpy, 'pick_lift')
         self._movl(place_app, rpy, 'place_approach')
         self._movl(place_grip, rpy, 'place')
-        self._tool(int(self.get_parameter('gripper_open').value))
+        self._wait_gripper('open')
         self._movl(place_app, rpy, 'place_retreat')
         summary['done'] = True
         summary['rpy'] = rpy
+        summary['gripper_mode'] = str(self.get_parameter('gripper_mode').value)
         return summary
 
 

@@ -136,10 +136,18 @@ ros2 service call /er2/plan std_srvs/srv/Trigger
 ros2 service call /er2/execute std_srvs/srv/Trigger
 ```
 
+그리퍼는 기본이 **수동**. 팔이 pick에 멈추면 컨트롤러에서 닫고:
+
+```bash
+ros2 service call /er2/continue std_srvs/srv/Trigger
+```
+
+place에 멈추면 열고 다시 continue. ROS ToolDO를 쓰려면 `gripper_mode:=tool_do`.
+
 `/er2/skill_status` 에 `pick_base_mm` 이 나오면 TF까지 된 것. 숫자가 테이블 위인지 확인한 뒤에만:
 
 ```bash
-ros2 launch dobot_er2 er2_nova5.launch.py execute_robot:=true speed_ratio:=10
+ros2 launch dobot_er2 er2_nova5.launch.py execute_robot:=true speed_ratio:=10 gripper_mode:=manual
 ```
 
 다시 plan → execute. 이때 실기가 움직인다.

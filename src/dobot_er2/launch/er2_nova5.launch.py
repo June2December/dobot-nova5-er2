@@ -62,6 +62,7 @@ def launch_setup(context, *args, **kwargs):
                 LaunchConfiguration('speed_ratio'), value_type=int),
             'tool_do_index': ParameterValue(
                 LaunchConfiguration('tool_do_index'), value_type=int),
+            'gripper_mode': LaunchConfiguration('gripper_mode').perform(context),
         }],
     )
     return [cam, camera_tf, bridge, skill]
@@ -79,6 +80,9 @@ def generate_launch_description():
             'execute_robot', default_value='false',
             description='true 일 때만 Nova 5가 움직입니다. 기본은 dry-run.'),
         DeclareLaunchArgument('speed_ratio', default_value='10'),
+        DeclareLaunchArgument(
+            'gripper_mode', default_value='manual',
+            description='manual: 사람이 그리퍼 버튼 후 /er2/continue. tool_do: ToolDOExecute'),
         DeclareLaunchArgument('tool_do_index', default_value='1'),
         DeclareLaunchArgument('cam_x', default_value='0.50'),
         DeclareLaunchArgument('cam_y', default_value='0.0'),
